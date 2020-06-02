@@ -40,7 +40,7 @@ import InfiniteLoading from 'vue-infinite-loading';
 import { mapMutations, mapState } from 'vuex';
 import Request from './Request';
 
-axios.defaults.baseURL = 'http://localhost:14080/logger';
+axios.defaults.baseURL = process.env.VUE_APP_REST_API_BASE_URL || 'http://localhost:14080/logger';
 
 // NOTE: taken from vue-infinite-loading
 const scrollBarStorage = {
@@ -87,7 +87,9 @@ export default {
     };
   },
   async created() {
-    const ws = new WebSocket('ws://localhost:14080/logger/ws');
+    const baseUrl = process.env.VUE_APP_WS_API_BASE_URL || 'ws://localhost:14080/logger';
+
+    const ws = new WebSocket(`${baseUrl}/ws`);
     ws.onmessage = message => {
       for (const { event, data } of JSON.parse(message.data)) {
         switch (event) {
