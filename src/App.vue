@@ -53,17 +53,15 @@ const scrollBarStorage = {
 
     // save scroll height on the scroll parent
     target[this.key] = target.scrollHeight;
-    console.log('save', target[this.key]);
   },
   restore(elm) {
     const target = this.getScrollElm(elm);
-    console.log(target);
+
     /* istanbul ignore else */
     if (typeof target[this.key] === 'number') {
       target.scrollTop = target.scrollHeight - target[this.key] + target.scrollTop;
     }
 
-    console.log('restore', target[this.key], target.scrollTop, target.scrollHeight);
     this.remove(target);
   },
   remove(elm) {
