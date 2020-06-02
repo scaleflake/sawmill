@@ -50,7 +50,11 @@ const store = new vuex.Store({
     },
 
     selectTraceId: (state, traceId) => {
-      state.selectedTraceId = traceId;
+      if (state.selectedTraceId === traceId) {
+        state.selectedTraceId = null;
+      } else {
+        state.selectedTraceId = traceId;
+      }
     },
   },
 });

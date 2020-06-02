@@ -1,34 +1,40 @@
-<template lang='pug'>
-.wrapper
-  .requests(
+<template>
+<div class="wrapper">
+  <div
+    class="requests"
     ref="requests"
     :style="{ 'border-top': requestsScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
-  )
-    pre(
-      v-for='req in preparedRequests'
+  >
+    <pre
+      v-for='req in requests'
       class='request'
+      :key="req.traceId"
       :class="{ 'request--active': selectedTraceId === req.traceId }"
       @click="() => selectTraceId(req.traceId)"
-    ) {{ req.text }}
-    InfiniteLoading(
-      @infinite="fetchNextRequestsPage"
-    )
-  .responses(
+    >
+      {{
+        selectedTraceId === req.traceId
+          ? JSON.stringify(req, null, 2)
+          : JSON.stringify(req, null, 2).split(`\n`).slice(0, 6).concat([`...`]).join(`\n`)
+      }}
+    </pre>
+    <InfiniteLoading @infinite="fetchNextRequestsPage" />
+  </div>
+  <div class="responses"
     ref="responses"
     :style="{ 'border-top': responsesScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
-  )
-    Request(
+  >
+    <Request
       v-for='res in responses'
       :key='res.id'
       :res='res'
-    )
-    InfiniteLoading(
-      @infinite="fetchNextResponsesPage"
-    )
+    />
+    <InfiniteLoading @infinite="fetchNextResponsesPage" />
+  </div>
+</div>
 </template>
 
 <script>
-import lo from 'lodash';
 import axios from 'axios';
 import InfiniteLoading from 'vue-infinite-loading';
 import { mapMutations, mapState } from 'vuex';
@@ -144,13 +150,6 @@ export default {
       'responsesBuffer',
       'selectedTraceId',
     ]),
-
-    preparedRequests() {
-      return this.requests.map(req => ({
-        traceId: req.traceId,
-        text: JSON.stringify(lo.pick(req, 'traceId'), null, 2),
-      }));
-    },
   },
   methods: {
     ...mapMutations([

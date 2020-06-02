@@ -12,15 +12,21 @@ export default Vue.extend({
     'selectTraceId',
   ]),
   render() {
+    const { res } = this;
     return (
       <pre
         class={
-          this.selectedTraceId === this.res.traceId
+          this.selectedTraceId === res.traceId
             ? 'response response--active'
             : 'response'
         }
-        vOn:click={() => this.selectTraceId(this.res.traceId)}
-      >{JSON.stringify(this.res, null, 2)}</pre>
+        vOn:click={() => this.selectTraceId(res.traceId)}
+      >{
+        this.selectedTraceId === res.traceId
+          ? JSON.stringify(res, null, 2)
+          : JSON.stringify(res, null, 2).split('\n').slice(0, 6).concat(['...'])
+            .join('\n')
+      }</pre>
     );
   },
 });
