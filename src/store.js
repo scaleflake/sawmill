@@ -1,28 +1,29 @@
 import Vue from 'vue';
 import vuex from 'vuex';
+import { restoreDollarSignsAndDots } from './helpers';
 
 Vue.use(vuex);
 
+const getInitialState = () => ({
+  requests: [], // from new to old
+  requestsBuffer: [], // from old to new
+
+  responses: [], // from new to old
+  responsesBuffer: [], // from old to new
+
+  selectedTraceId: null,
+  markers: [],
+});
+
 const store = new vuex.Store({
-  state: {
-    requests: [], // from new to old
-    requestsBuffer: [], // from old to new
-
-    responses: [], // from new to old
-    responsesBuffer: [], // from old to new
-
-    selectedTraceId: null,
-  },
+  state: getInitialState(),
   mutations: {
-    setRequests: (state, requests) => {
-      state.requests = requests;
-    },
-    setResponses: (state, responses) => {
-      state.responses = responses;
+    resetState: (state) => {
+      Object.assign(state, getInitialState());
     },
 
     pushRequests: (state, requests) => {
-      state.requests.push(...requests);
+      state.requests.push(...requests.map(restoreDollarSignsAndDots));
     },
     pushResponses: (state, responses) => {
       state.responses.push(...responses);
@@ -36,16 +37,16 @@ const store = new vuex.Store({
     },
 
     unshiftRequests: (state, requests) => {
-      state.requests.unshift(...requests);
+      state.requests.unshift(...requests.map(restoreDollarSignsAndDots));
     },
     unshiftResponses: (state, responses) => {
       state.responses.unshift(...responses);
     },
 
-    extractRequestsFromBuffer: state => {
-      state.requests.unshift(...state.requestsBuffer.splice(0, 5).reverse());
+    extractRequestsFromBuffer: (state) => {
+      state.requests.unshift(...state.requestsBuffer.splice(0, 5).reverse().map(restoreDollarSignsAndDots));
     },
-    extractResponsesFromBuffer: state => {
+    extractResponsesFromBuffer: (state) => {
       state.responses.unshift(...state.responsesBuffer.splice(0, 5).reverse());
     },
 
@@ -55,6 +56,13 @@ const store = new vuex.Store({
       } else {
         state.selectedTraceId = traceId;
       }
+    },
+
+    putMarker: (state) => {
+      state.markers.push(state.requests[0].traceId);
+    },
+    clearMarkers: (state) => {
+      state.markers = [];
     },
   },
 });

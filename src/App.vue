@@ -1,44 +1,83 @@
 <template>
-<div class="wrapper">
-  <div
-    class="requests"
-    ref="requests"
-    :style="{ 'border-top': requestsScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
-  >
-    <pre
-      v-for='req in requests'
-      class='request'
-      :key="req.traceId"
-      :class="{ 'request--active': selectedTraceId === req.traceId }"
-      @click="() => selectTraceId(req.traceId)"
+<main>
+  <div class="controls">
+    <span>Your IP: {{ ip }}</span>
+
+    <br>
+
+    <span style="margin-right: 5px">Filter query</span>
+    <input
+      type="text"
+      style="margin-right: 5px"
+      v-model="filterQueryString"
+      :style="{ border: filterQueryIsValid ? '' : 'solid 2px red' }"
+      @keyup.enter="applyFilter"
     >
-      {{
-        selectedTraceId === req.traceId
-          ? JSON.stringify(req, null, 2)
-          : JSON.stringify(req, null, 2).split(`\n`).slice(0, 6).concat([`...`]).join(`\n`)
-      }}
-    </pre>
-    <InfiniteLoading @infinite="fetchNextRequestsPage" />
+    <button @click="applyFilter">
+      Apply
+    </button>
+
+    <br>
+
+    <button
+      style="margin-right: 5px"
+      @click="putMarker"
+    >
+      Put marker
+    </button>
+    <button
+      style="margin-right: 5px"
+      @click="clearMarkers"
+    >
+      Clear markers
+    </button>
   </div>
-  <div class="responses"
-    ref="responses"
-    :style="{ 'border-top': responsesScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
-  >
-    <Request
-      v-for='res in responses'
-      :key='res.id'
-      :res='res'
-    />
-    <InfiniteLoading @infinite="fetchNextResponsesPage" />
+
+  <div class="wrapper">
+    <div
+      class="requests"
+      ref="requests"
+      :style="{ 'border-top': requestsScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
+    >
+      <Request
+        v-for='req in requests'
+        :key='req.traceId'
+        :req='req'
+      />
+      <InfiniteLoading
+        v-if="shouldRenderRequestsInfinite"
+        @infinite="fetchNextRequestsPage"
+      />
+    </div>
+    <div
+      class="responses"
+      ref="responses"
+      :style="{ 'border-top': responsesScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
+    >
+      <Response
+        v-for='res in responses'
+        :key='res.traceId'
+        :res='res'
+      />
+      <InfiniteLoading
+        v-if="shouldRenderResponsesInfinite"
+        @infinite="fetchNextResponsesPage"
+      />
+    </div>
   </div>
-</div>
+</main>
 </template>
 
 <script>
+import lo from 'lodash';
+import sift from 'sift';
 import axios from 'axios';
+import JSON5 from 'json5';
 import InfiniteLoading from 'vue-infinite-loading';
+import ReconnectingWebSocket from 'reconnecting-websocket';
 import { mapMutations, mapState } from 'vuex';
-import Request from './Request';
+import Request from './Request.vue';
+import Response from './Response.vue';
 
 axios.defaults.baseURL = process.env.VUE_APP_REST_API_BASE_URL || 'http://localhost:14080/logger';
 
@@ -72,38 +111,67 @@ const scrollBarStorage = {
   },
 };
 
-
 export default {
   components: {
     Request,
+    Response,
     InfiniteLoading,
   },
   data() {
     return {
+      ip: null,
+
+      filterQueryString: '',
+      filterQueryIsValid: true,
+      filterQueryObject: null,
+      filterFunction: null,
+
       requestsScrolledToTop: false,
       responsesScrolledToTop: false,
+
+      shouldRenderRequestsInfinite: true,
+      shouldRenderResponsesInfinite: true,
     };
   },
   async created() {
+    const { data: { ip } } = await axios.get('https://api.ipify.org?format=json');
+    this.ip = ip;
+
     const baseUrl = process.env.VUE_APP_WS_API_BASE_URL || 'ws://localhost:14080/logger';
 
-    const ws = new WebSocket(`${baseUrl}/ws`);
-    ws.onmessage = message => {
+    const ws = new ReconnectingWebSocket(`${baseUrl}/ws`);
+    ws.onmessage = (message) => {
+      const addRequest = (data) => {
+        if (this.requestsScrolledToTop) {
+          this.unshiftRequests([data]);
+        } else {
+          this.pushRequestsToBuffer([data]);
+        }
+      };
+      const addResponse = (data) => {
+        if (this.responsesScrolledToTop) {
+          this.unshiftResponses([data]);
+        } else {
+          this.pushResponsesToBuffer([data]);
+        }
+      };
+
       for (const { event, data } of JSON.parse(message.data)) {
         switch (event) {
           case 'request':
-            if (this.requestsScrolledToTop) {
-              this.unshiftRequests([data]);
+            if (this.filterFunction) {
+              if (this.filterFunction(data)) {
+                addRequest(data);
+              }
             } else {
-              this.pushRequestsToBuffer([data]);
+              addRequest(data);
             }
             break;
           case 'response':
-            if (this.responsesScrolledToTop) {
-              this.unshiftResponses([data]);
-            } else {
-              this.pushResponsesToBuffer([data]);
-            }
+            // if (this.filterFunction) {
+            //   if (this.filterFunction(data))
+            // }
+            addResponse(data);
             break;
           default:
             break;
@@ -113,14 +181,16 @@ export default {
   },
   async mounted() {
     this.requestsScrolledToTop = this.$refs.requests.scrollTop === 0;
-    this.$refs.requests.addEventListener('scroll', event => {
+    this.$refs.requests.addEventListener('scroll', (event) => {
       this.requestsScrolledToTop = event.target.scrollTop < 35;
     });
 
     this.responsesScrolledToTop = this.$refs.responses.scrollTop === 0;
-    this.$refs.responses.addEventListener('scroll', event => {
+    this.$refs.responses.addEventListener('scroll', (event) => {
       this.responsesScrolledToTop = event.target.scrollTop < 35;
     });
+
+    console.log(this.$refs.requestsInfinite);
   },
   watch: {
     requestsScrolledToTop(newV) {
@@ -141,6 +211,39 @@ export default {
         });
       }
     },
+
+    filterQueryString: (() => {
+      function filterQueryString(newV) {
+        if (newV === '') {
+          this.filterQueryIsValid = true;
+          this.filterQueryObject = null;
+          this.filterFunction = null;
+          return;
+        }
+
+        let filterQueryObject;
+        try {
+          filterQueryObject = JSON5.parse(newV);
+        } catch {
+          this.filterQueryIsValid = false;
+          return;
+        }
+
+        let filterFunction;
+        try {
+          filterFunction = sift(filterQueryObject);
+        } catch {
+          this.filterQueryIsValid = false;
+          return;
+        }
+
+        this.filterQueryIsValid = true;
+        this.filterQueryObject = filterQueryObject;
+        this.filterFunction = filterFunction;
+      }
+
+      return lo.debounce(filterQueryString, 200);
+    })(),
   },
   computed: {
     ...mapState([
@@ -162,21 +265,39 @@ export default {
       'extractResponsesFromBuffer',
       'unshiftRequests',
       'unshiftResponses',
+      'resetState',
+      'putMarker',
+      'clearMarkers',
     ]),
     async fetchNextRequestsPage(state) {
-      const lastTimestamp = this.requests[this.requests.length - 1]?.timestamp;
+      const { traceId, timestamp } = this.requests[this.requests.length - 1] || {};
+
+      const filter = this.filterQueryObject || {};
+      if (traceId || timestamp) {
+        Object.assign(filter, {
+          $or: [
+            { timestamp: { $lt: timestamp } },
+            { timestamp, traceId: { $gt: traceId } },
+          ],
+        });
+      }
+
       const { data } = await axios.get('/requests', {
         params: {
-          $sort: '-timestamp',
+          $sort: '-timestamp,traceId',
           $limit: '5',
-          ...(lastTimestamp && { timestamp: `<${lastTimestamp}` }),
+          ...(Object.keys(filter).length && { $filter: JSON5.stringify(filter) }),
         },
       });
       if (data.length) {
         this.pushRequests(data);
-        state.loaded();
+        if (state) {
+          state.loaded();
+        }
       } else {
-        state.complete();
+        if (state) {
+          state.complete();
+        }
       }
     },
     async fetchNextResponsesPage(state) {
@@ -195,6 +316,25 @@ export default {
         state.complete();
       }
     },
+
+    applyFilter() {
+      this.resetState();
+      this.rerenderRequestsInfinite();
+      this.rerenderResponsesInfinite();
+    },
+
+    rerenderRequestsInfinite() {
+      this.shouldRenderRequestsInfinite = false;
+      this.$nextTick(() => {
+        this.shouldRenderRequestsInfinite = true;
+      });
+    },
+    rerenderResponsesInfinite() {
+      this.shouldRenderResponsesInfinite = false;
+      this.$nextTick(() => {
+        this.shouldRenderResponsesInfinite = true;
+      });
+    },
   },
 };
 </script>
@@ -204,12 +344,28 @@ body {
   margin: 0;
 }
 
+main {
+  display: flex;
+  flex-flow: column;
+  height: 100vh;
+}
+
+.controls {
+  background: #dff2ff;
+
+  input[type="text"] {
+    font-family: monospace;
+    width: 800px;
+  }
+}
+
 .wrapper {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;
   grid-template-areas: 'requests responses';
-  height: 100vh;
+  flex: 1;
+  overflow: auto;
 }
 
 %column {
@@ -224,11 +380,5 @@ body {
 .responses {
   @extend %column;
   grid-area: responses;
-}
-
-.response, .request {
-  &--active {
-    background: lightblue;
-  }
 }
 </style>
