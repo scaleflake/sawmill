@@ -13,9 +13,13 @@
       :style="{ border: filterQueryIsValid ? '' : 'solid 2px red' }"
       @keyup.enter="applyFilter"
     >
-    <button @click="applyFilter">
+    <button
+      style="margin-right: 5px"
+      @click="applyFilter"
+    >
       Apply
     </button>
+    <span :title="tooltipText">Examples</span>
 
     <br>
 
@@ -253,6 +257,15 @@ export default {
       'responsesBuffer',
       'selectedTraceId',
     ]),
+
+    tooltipText() {
+      return ''
+      + `{ fromIp: '${this.ip}' }\n\n`
+      + `{ fromIp: '${this.ip}', url: { $in: ['/rpc', '/rpc/'] } }\n\n`
+      + `{ fromIp: '${this.ip}', method: 'DELETE' }\n\n`
+      + `{ fromIp: '${this.ip}', method: 'POST', url: { $nin: ['/rpc', '/rpc/'] } }\n\n`
+      + '{ url: { $regex: \'^/asMaster\' } }';
+    },
   },
   methods: {
     ...mapMutations([
