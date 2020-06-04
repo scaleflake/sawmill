@@ -19,7 +19,12 @@
     >
       Apply
     </button>
-    <span :title="tooltipText">Examples</span>
+    <span
+      style="text-decoration:underline; text-decoration-style: dashed;"
+      :title="tooltipText"
+    >
+      Examples
+    </span>
 
     <br>
 
@@ -181,6 +186,12 @@ export default {
             break;
         }
       }
+    };
+    ws.onopen = () => {
+      console.log('WebSocket opened!');
+    };
+    ws.onclose = () => {
+      console.log('WebSocket closed!');
     };
   },
   async mounted() {
