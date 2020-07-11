@@ -14,7 +14,10 @@ module.exports = {
     'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     'max-len': [2, 120],
+    'func-names': [0],
     'no-lonely-if': [0],
+    'no-param-reassign': [0],
+    'operator-linebreak': [0],
     'no-restricted-syntax': [
       'error',
       {
@@ -35,7 +38,7 @@ module.exports = {
         selector: 'WithStatement',
         message: '`with` is disallowed in strict mode because it makes code impossible to predict and optimize.',
       },
-    ]
+    ],
   },
   overrides: [
     {

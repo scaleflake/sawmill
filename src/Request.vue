@@ -1,7 +1,7 @@
 <script>
 import Vue from 'vue';
 import { mapState, mapMutations } from 'vuex';
-import { formatDateTime } from './helpers';
+import { formatDateTime } from './utility';
 
 export default Vue.extend({
   props: {
@@ -27,9 +27,10 @@ export default Vue.extend({
         <div
           class={s.header}
           vOn:click={() => this.selectTraceId(req.traceId)}
-        >{
-          `${formatDateTime(req.timestamp)} ${req.method} ${req.url}`
-        }</div>
+        >
+          {`${formatDateTime(req.timestamp)} ${req.method} ${req.url}`}
+        </div>
+
         {this.selectedTraceId === req.traceId ? JSON.stringify(req, null, 2) : ''}
       </pre>
     );
@@ -46,13 +47,13 @@ export default Vue.extend({
     padding: 5px;
   }
   .header:hover {
-    background: lightsteelblue;
+    background: var(--request-background);
   }
 }
 .markered {
   border-top: solid 3px red;
 }
 .active {
-  background: lightblue !important;
+  background: var(--request-active-background) !important;
 }
 </style>

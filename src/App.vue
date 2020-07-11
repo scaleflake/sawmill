@@ -1,67 +1,108 @@
 <template>
-<main>
+<main
+  :class="{ dark: isDark, light: !isDark }"
+  tabindex="-1"
+  @keyup.alt.77="putMarker"
+>
   <div class="controls">
-    <span>Your IP: {{ ip }}</span>
+    <div class="panel">
+      <div class="row">
+        <span style="margin-right: 5px">Your IP: {{ ip }}</span>
+        <button
+          @click="() => {
+            const code = `{ fromIp: '${ip}' }`;
+            codeJar.updateCode(code);
+            this.filterQueryString = code;
+          }"
+        >
+          Apply as filter
+        </button>
+      </div>
 
-    <br>
+      <div class="row">
+        <span style="margin-right: 5px">Filter query:</span>
+        <code
+          ref="filterQueryInput"
+          class="language-yaml"
+          style="display: block; border-radius: 0px; margin-bottom: 0"
+          :style="{ border: filterQueryIsValid ? 'solid 3px transparent' : 'solid 3px red',  }"
+          @keydown.ctrl.enter.prevent="applyFilter"
+        />
+      </div>
 
-    <span style="margin-right: 5px">Filter query</span>
-    <input
-      type="text"
-      style="margin-right: 5px"
-      v-model="filterQueryString"
-      :style="{ border: filterQueryIsValid ? '' : 'solid 2px red' }"
-      @keyup.enter="applyFilter"
-    >
-    <button
-      style="margin-right: 5px"
-      @click="applyFilter"
-    >
-      Apply
-    </button>
-    <span
-      style="text-decoration:underline; text-decoration-style: dashed;"
-      :title="tooltipText"
-    >
-      Examples
-    </span>
+      <div class="row">
+        <button
+          style="margin-right: 5px"
+          @click="applyFilter"
+        >
+          Apply (CTRL + Enter)
+        </button>
+        <span
+          style="text-decoration: underline; text-decoration-style: dashed;"
+          :title="tooltipText"
+        >
+          Examples
+        </span>
+      </div>
+    </div>
 
-    <br>
+    <div class="panel">
+      <button
+        style="margin-right: 5px"
+        @click="putMarker"
+      >
+        Put marker (ALT + M)
+      </button>
+      <button
+        style="margin-right: 5px"
+        @click="clearMarkers"
+      >
+        Clear markers ({{ markers.length }})
+      </button>
+    </div>
 
-    <button
-      style="margin-right: 5px"
-      @click="putMarker"
-    >
-      Put marker
-    </button>
-    <button
-      style="margin-right: 5px"
-      @click="clearMarkers"
-    >
-      Clear markers
-    </button>
+    <div class="panel">
+      <button
+        style="margin-right: 5px"
+        @click="buildTimeline"
+      >
+        Build timeline
+      </button>
+      <button
+        style="margin-right: 5px"
+        @click="timelineIsVisible = !timelineIsVisible"
+      >
+        {{ timelineIsVisible ? 'Hide timeline' : 'Show timeline' }}
+      </button>
+    </div>
   </div>
 
-  <div class="wrapper">
+  <!-- <div class="wrapper">
     <div
       class="requests"
       ref="requests"
-      :style="{ 'border-top': requestsScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
+      :class="{ 'active': requestsScrolledToTop }"
     >
+      <InfiniteLoading
+        direction="top"
+        @infinite="fetchNewRequestsPage"
+        :identifier="newerRequestsInfiniteLoaderId"
+      />
       <Request
         v-for='req in requests'
         :key='req.traceId'
         :req='req'
       />
       <InfiniteLoading
-        v-if="shouldRenderRequestsInfinite"
         @infinite="fetchNextRequestsPage"
+        :identifier="olderRequestsInfiniteLoaderId"
       />
     </div>
+
     <div
       class="responses"
       ref="responses"
-      :style="{ 'border-top': responsesScrolledToTop ? 'solid 15px #89ff9a': 'solid 15px white' }"
+      :class="{ 'active': responsesScrolledToTop }"
     >
       <Response
         v-for='res in responses'
@@ -73,6 +114,37 @@
         @infinite="fetchNextResponsesPage"
       />
     </div>
+  </div> -->
+
+  <div
+    ref='timeline'
+    :style="{ display: timelineIsVisible ? 'block' : 'none' }"
+  />
+
+  <div
+    ref='requests'
+    :class="{ 'active': requestsScrolledToTop }"
+    :style="{
+      display: 'inline-block',
+      overflowY: 'scroll',
+      borderTop: `solid 15px ${requestsScrolledToTop ? 'var(--column-active-indicator-color)' : 'transparent'}`,
+    }"
+  >
+    <InfiniteLoading
+      direction="top"
+      @infinite="fetchNewRequestsPage"
+      :identifier="newerRequestsInfiniteLoaderId"
+    />
+    <RequestAndResponse
+      v-for="req in requests"
+      :key="req.traceId"
+      :req="req"
+      :res="req.res"
+    />
+    <InfiniteLoading
+      @infinite="fetchNextRequestsPage"
+      :identifier="olderRequestsInfiniteLoaderId"
+    />
   </div>
 </main>
 </template>
@@ -82,52 +154,34 @@ import lo from 'lodash';
 import sift from 'sift';
 import axios from 'axios';
 import JSON5 from 'json5';
+import Prism from 'prismjs';
+// import 'prismjs/themes/prism-okaidia.css';
+import 'prismjs/themes/prism-coy.css';
+import 'prismjs/components/prism-yaml.min';
+import { CodeJar } from 'codejar';
+import { Timeline } from 'vis-timeline';
+import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import InfiniteLoading from 'vue-infinite-loading';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 import { mapMutations, mapState } from 'vuex';
-import Request from './Request.vue';
-import Response from './Response.vue';
+// import Request from './Request.vue';
+// import Response from './Response.vue';
+import RequestAndResponse from './RequestAndResponse.vue';
+import { /* scrollBarStorage, */ queue } from './utility';
 
 axios.defaults.baseURL = process.env.VUE_APP_REST_API_BASE_URL || 'http://localhost:14080/logger';
 
-// NOTE: taken from vue-infinite-loading
-const scrollBarStorage = {
-  key: '_infiniteScrollHeight',
-  getScrollElm(elm) {
-    return elm === window ? document.documentElement : elm;
-  },
-  save(elm) {
-    const target = this.getScrollElm(elm);
-
-    // save scroll height on the scroll parent
-    target[this.key] = target.scrollHeight;
-  },
-  restore(elm) {
-    const target = this.getScrollElm(elm);
-
-    /* istanbul ignore else */
-    if (typeof target[this.key] === 'number') {
-      target.scrollTop = target.scrollHeight - target[this.key] + target.scrollTop;
-    }
-
-    this.remove(target);
-  },
-  remove(elm) {
-    if (elm[this.key] !== undefined) {
-      // remove scroll height
-      delete elm[this.key]; // eslint-disable-line no-param-reassign
-    }
-  },
-};
-
 export default {
   components: {
-    Request,
-    Response,
+    // Request,
+    // Response,
     InfiniteLoading,
+    RequestAndResponse,
   },
   data() {
     return {
+      isDark: false,
+
       ip: null,
 
       filterQueryString: '',
@@ -136,32 +190,44 @@ export default {
       filterFunction: null,
 
       requestsScrolledToTop: false,
-      responsesScrolledToTop: false,
+      // responsesScrolledToTop: false,
 
-      shouldRenderRequestsInfinite: true,
-      shouldRenderResponsesInfinite: true,
+      // shouldRenderRequestsInfinite: true,
+      // shouldRenderResponsesInfinite: true,
+
+      requestsLoadingQueue: queue(),
+
+      newerRequestsInfiniteLoaderId: Date.now(),
+      olderRequestsInfiniteLoaderId: Date.now() + 100000,
+
+      codeJar: null,
+
+      timeline: null,
+      timelineIsVisible: true,
     };
   },
   async created() {
+    const savedFilterQueryString = localStorage.getItem('logs-wizard:filterQueryString');
+    if (typeof savedFilterQueryString === 'string') {
+      this.filterQueryString = savedFilterQueryString;
+      this.checkAndCompileFilterQueryString(this.filterQueryString);
+    }
+
+    this.fetchNextRequestsPage();
+
     const { data: { ip } } = await axios.get('https://api.ipify.org?format=json');
     this.ip = ip;
 
     const baseUrl = process.env.VUE_APP_WS_API_BASE_URL || 'ws://localhost:14080/logger';
 
+    let i = 0;
     const ws = new ReconnectingWebSocket(`${baseUrl}/ws`);
     ws.onmessage = (message) => {
       const addRequest = (data) => {
         if (this.requestsScrolledToTop) {
           this.unshiftRequests([data]);
         } else {
-          this.pushRequestsToBuffer([data]);
-        }
-      };
-      const addResponse = (data) => {
-        if (this.responsesScrolledToTop) {
-          this.unshiftResponses([data]);
-        } else {
-          this.pushResponsesToBuffer([data]);
+          this.newerRequestsInfiniteLoaderId += 1;
         }
       };
 
@@ -177,10 +243,7 @@ export default {
             }
             break;
           case 'response':
-            // if (this.filterFunction) {
-            //   if (this.filterFunction(data))
-            // }
-            addResponse(data);
+            this.applyResponse(data);
             break;
           default:
             break;
@@ -188,11 +251,15 @@ export default {
       }
     };
     ws.onopen = () => {
-      console.log('WebSocket opened!');
+      i += 1;
+      console.log(`WebSocket opened! (${i})`);
     };
     ws.onclose = () => {
-      console.log('WebSocket closed!');
+      i -= 1;
+      console.log(`WebSocket closed! (${i})`);
     };
+
+    window.trySendRequestsInParallel = this.trySendRequestsInParallel;
   },
   async mounted() {
     this.requestsScrolledToTop = this.$refs.requests.scrollTop === 0;
@@ -200,73 +267,63 @@ export default {
       this.requestsScrolledToTop = event.target.scrollTop < 35;
     });
 
-    this.responsesScrolledToTop = this.$refs.responses.scrollTop === 0;
-    this.$refs.responses.addEventListener('scroll', (event) => {
-      this.responsesScrolledToTop = event.target.scrollTop < 35;
-    });
+    // this.responsesScrolledToTop = this.$refs.responses.scrollTop === 0;
+    // this.$refs.responses.addEventListener('scroll', (event) => {
+    //   this.responsesScrolledToTop = event.target.scrollTop < 35;
+    // });
 
-    console.log(this.$refs.requestsInfinite);
+    const jar = new CodeJar(this.$refs.filterQueryInput, (e) => {
+      Prism.highlightElement(e);
+    });
+    jar.onUpdate((code) => {
+      this.filterQueryString = code;
+    });
+    jar.updateCode(this.filterQueryString);
+    this.codeJar = jar;
   },
   watch: {
-    requestsScrolledToTop(newV) {
-      if (newV) {
-        scrollBarStorage.save(this.$refs.requests);
-        this.extractRequestsFromBuffer();
-        requestAnimationFrame(() => {
-          scrollBarStorage.restore(this.$refs.requests);
-        });
-      }
-    },
-    responsesScrolledToTop(newV) {
-      if (newV) {
-        scrollBarStorage.save(this.$refs.responses);
-        this.extractResponsesFromBuffer();
-        requestAnimationFrame(() => {
-          scrollBarStorage.restore(this.$refs.responses);
-        });
+    // responsesScrolledToTop(newV) {
+    //   if (newV) {
+    //     scrollBarStorage.save(this.$refs.responses);
+    //     this.extractResponsesFromBuffer();
+    //     requestAnimationFrame(() => {
+    //       scrollBarStorage.restore(this.$refs.responses);
+    //     });
+    //   }
+    // },
+
+    selectedTraceId(newV) {
+      if (
+        this.timeline !== null &&
+        typeof newV === 'string'
+      ) {
+        this.timeline.setSelection([newV]);
       }
     },
 
     filterQueryString: (() => {
-      function filterQueryString(newV) {
-        if (newV === '') {
-          this.filterQueryIsValid = true;
-          this.filterQueryObject = null;
-          this.filterFunction = null;
-          return;
-        }
+      const checkAndCompileFilterQueryString = lo.debounce((self, newV) => {
+        self.checkAndCompileFilterQueryString(newV);
+      }, 200);
 
-        let filterQueryObject;
-        try {
-          filterQueryObject = JSON5.parse(newV);
-        } catch {
-          this.filterQueryIsValid = false;
-          return;
-        }
+      const saveFilterQueryString = lo.debounce((newV) => {
+        localStorage.setItem('logs-wizard:filterQueryString', newV);
+      }, 500);
 
-        let filterFunction;
-        try {
-          filterFunction = sift(filterQueryObject);
-        } catch {
-          this.filterQueryIsValid = false;
-          return;
-        }
-
-        this.filterQueryIsValid = true;
-        this.filterQueryObject = filterQueryObject;
-        this.filterFunction = filterFunction;
-      }
-
-      return lo.debounce(filterQueryString, 200);
+      return function (newV) {
+        checkAndCompileFilterQueryString(this, newV);
+        saveFilterQueryString(newV);
+      };
     })(),
   },
   computed: {
     ...mapState([
       'requests',
-      'requestsBuffer',
-      'responses',
-      'responsesBuffer',
+      // 'requestsBuffer',
+      // 'responses',
+      // 'responsesBuffer',
       'selectedTraceId',
+      'markers',
     ]),
 
     tooltipText() {
@@ -280,6 +337,7 @@ export default {
   },
   methods: {
     ...mapMutations([
+      'applyResponse',
       'selectTraceId',
       'pushRequests',
       'pushRequestsToBuffer',
@@ -293,71 +351,213 @@ export default {
       'putMarker',
       'clearMarkers',
     ]),
-    async fetchNextRequestsPage(state) {
-      const { traceId, timestamp } = this.requests[this.requests.length - 1] || {};
 
-      const filter = this.filterQueryObject || {};
-      if (traceId || timestamp) {
-        Object.assign(filter, {
-          $or: [
-            { timestamp: { $lt: timestamp } },
-            { timestamp, traceId: { $gt: traceId } },
-          ],
+    async fetchNewRequestsPage(state) {
+      this.requestsLoadingQueue.schedule(async () => {
+        const { traceId, timestamp } = this.requests[0] || {};
+
+        const filter = this.filterQueryObject || {};
+        if (traceId || timestamp) {
+          Object.assign(filter, {
+            $or: [
+              { timestamp: { $gt: timestamp } },
+              { timestamp, traceId: { $lt: traceId } },
+            ],
+          });
+        }
+
+        const { data } = await axios.get('/requests', {
+          params: {
+            $sort: 'timestamp,-traceId',
+            $limit: '10',
+            $include: 'response',
+            ...(Object.keys(filter).length && { $filter: JSON5.stringify(filter) }),
+          },
         });
-      }
 
-      const { data } = await axios.get('/requests', {
-        params: {
-          $sort: '-timestamp,traceId',
-          $limit: '5',
-          ...(Object.keys(filter).length && { $filter: JSON5.stringify(filter) }),
-        },
-      });
-      if (data.length) {
-        this.pushRequests(data);
-        if (state) {
-          state.loaded();
+        if (data.length) {
+          this.unshiftRequests(data.reverse());
+          if (state) {
+            state.loaded();
+          }
+        } else {
+          if (state) {
+            state.complete();
+          }
         }
-      } else {
-        if (state) {
-          state.complete();
-        }
-      }
-    },
-    async fetchNextResponsesPage(state) {
-      const lastTimestamp = this.responses[this.responses.length - 1]?.timestamp;
-      const { data } = await axios.get('/responses', {
-        params: {
-          $sort: '-timestamp',
-          $limit: '5',
-          ...(lastTimestamp && { timestamp: `<${lastTimestamp}` }),
-        },
       });
-      if (data.length) {
-        this.pushResponses(data);
-        state.loaded();
-      } else {
-        state.complete();
-      }
     },
 
-    applyFilter() {
+    async fetchNextRequestsPage(state) {
+      this.requestsLoadingQueue.schedule(async () => {
+        const { traceId, timestamp } = this.requests[this.requests.length - 1] || {};
+
+        const filter = this.filterQueryObject || {};
+        if (traceId || timestamp) {
+          Object.assign(filter, {
+            $or: [
+              { timestamp: { $lt: timestamp } },
+              { timestamp, traceId: { $gt: traceId } },
+            ],
+          });
+        }
+
+        const { data } = await axios.get('/requests', {
+          params: {
+            $sort: '-timestamp,traceId',
+            $limit: '10',
+            $include: 'response',
+            ...(Object.keys(filter).length && { $filter: JSON5.stringify(filter) }),
+          },
+        });
+        if (data.length) {
+          this.pushRequests(data);
+          if (state) {
+            state.loaded();
+          }
+        } else {
+          if (state) {
+            state.complete();
+          }
+        }
+      });
+    },
+
+    // async fetchNextResponsesPage(state) {
+    //   const lastTimestamp = this.responses[this.responses.length - 1]?.timestamp;
+    //   const { data } = await axios.get('/responses', {
+    //     params: {
+    //       $sort: '-timestamp',
+    //       $limit: '10',
+    //       ...(lastTimestamp && { timestamp: `<${lastTimestamp}` }),
+    //     },
+    //   });
+    //   if (data.length) {
+    //     this.pushResponses(data);
+    //     state.loaded();
+    //   } else {
+    //     state.complete();
+    //   }
+    // },
+
+    checkAndCompileFilterQueryString(filterQueryString) {
+      if (filterQueryString === '') {
+        this.filterQueryIsValid = true;
+        this.filterQueryObject = null;
+        this.filterFunction = null;
+        return;
+      }
+
+      let filterQueryObject;
+      try {
+        filterQueryObject = JSON5.parse(filterQueryString);
+      } catch {
+        this.filterQueryIsValid = false;
+        return;
+      }
+
+      let filterFunction;
+      try {
+        filterFunction = sift(filterQueryObject);
+      } catch {
+        this.filterQueryIsValid = false;
+        return;
+      }
+
+      this.filterQueryIsValid = true;
+      this.filterQueryObject = filterQueryObject;
+      this.filterFunction = filterFunction;
+    },
+
+    async applyFilter() {
       this.resetState();
-      this.rerenderRequestsInfinite();
-      this.rerenderResponsesInfinite();
+      await this.fetchNextRequestsPage();
+      this.newerRequestsInfiniteLoaderId += 1;
+      this.olderRequestsInfiniteLoaderId += 1;
+      // this.rerenderResponsesInfinite();
     },
 
-    rerenderRequestsInfinite() {
-      this.shouldRenderRequestsInfinite = false;
-      this.$nextTick(() => {
-        this.shouldRenderRequestsInfinite = true;
-      });
+    // rerenderResponsesInfinite() {
+    //   this.shouldRenderResponsesInfinite = false;
+    //   this.$nextTick(() => {
+    //     this.shouldRenderResponsesInfinite = true;
+    //   });
+    // },
+
+    buildTimeline() {
+      if (this.markers.length > 1) {
+        this.$refs.timeline.innerHTML = '';
+
+        // TODO: extract code below to getter?
+        let lowerBound = Infinity;
+        let upperBound = -Infinity;
+        for (const traceId of this.markers) {
+          const request = this.requests.find((r) => r.traceId === traceId);
+          if (request && request.timestamp < lowerBound) {
+            lowerBound = request.timestamp;
+          }
+          if (request && request.timestamp > upperBound) {
+            upperBound = request.timestamp;
+          }
+        }
+        const items = [];
+        for (const r of this.requests) {
+          if (
+            r.timestamp > lowerBound &&
+            r.timestamp <= upperBound &&
+            !items.some((i) => i.id === r.traceId)
+          ) {
+            items.push({
+              id: r.traceId,
+              content: `${r.method} ${r.url}`,
+              start: new Date(r.timestamp),
+              ...(r.response && { end: new Date(r.response.timestamp) }),
+            });
+          }
+        }
+
+        const timeline = new Timeline(this.$refs.timeline, items, {});
+        timeline.on('select', (properties) => {
+          this.selectTraceId(properties.items[0]);
+        });
+        if (typeof this.selectedTraceId === 'string') {
+          timeline.setSelection([this.selectedTraceId]);
+        }
+        this.timeline = timeline;
+      }
     },
-    rerenderResponsesInfinite() {
-      this.shouldRenderResponsesInfinite = false;
-      this.$nextTick(() => {
-        this.shouldRenderResponsesInfinite = true;
-      });
+
+    async trySendRequestsInParallel() {
+      if (this.markers.length > 1) {
+        // TODO: extract code below to getter?
+        let lowerBound = Infinity;
+        let upperBound = -Infinity;
+        for (const traceId of this.markers) {
+          const request = this.requests.find((r) => r.traceId === traceId);
+          if (request && request.timestamp < lowerBound) {
+            lowerBound = request.timestamp;
+          }
+          if (request && request.timestamp > upperBound) {
+            upperBound = request.timestamp;
+          }
+        }
+        const requests = [];
+        for (const request of this.requests) {
+          if (
+            request.timestamp > lowerBound &&
+            request.timestamp <= upperBound &&
+            !requests.some((r) => r.traceId === request.traceId)
+          ) {
+            requests.push(request);
+          }
+        }
+
+        await Promise.all(requests.map((r) => (
+          axios[r.method.toLowerCase()](`https://ba.narandev.ru/api/v1${r.url}`, {
+            headers: { Authorization: r.headers.authorization },
+          })
+        )));
+      }
     },
   },
 };
@@ -368,22 +568,64 @@ body {
   margin: 0;
 }
 
+.light {
+  --main-background: white;
+  --font-color: black;
+  --input-background: white;
+
+  --controls-background: #dff2ff;
+  --column-active-indicator-color: #89ff9a;
+
+  --request-background: lightsteelblue;
+  --request-active-background: lightblue;
+
+  --response-background: lightsteelblue;
+  --response-active-background: lightblue;
+}
+.dark {
+  --main-background: #121212;
+  --font-color: white;
+  --input-background: #242424;
+
+  --controls-background: #191919;
+  --column-active-indicator-color: rgba(0, 255, 180, 0.3);
+
+  --request-background: #242424;
+  --request-active-background: #303030;
+
+  --response-background: #242424;
+  --response-active-background: #303030;
+}
+
 main {
   display: flex;
   flex-flow: column;
   height: 100vh;
+  background: var(--main-background);
+  color: var(--font-color);
 }
 
 .controls {
-  background: #dff2ff;
+  padding: 10px 5px;
+  background: var(--controls-background);
+
+  /* .panel + .panel {
+    margin-top: 0;
+  }
+
+  .row + .row {
+    margin-top: 0;
+  } */
 
   input[type="text"] {
     font-family: monospace;
     width: 800px;
+    background: var(--input-background);
+    color: var(--font-color);
   }
 }
 
-.wrapper {
+/* .wrapper {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;
@@ -396,6 +638,7 @@ main {
   padding: 15px;
   display: inline-block;
   overflow-y: scroll;
+  border-top: solid 15px transparent;
 }
 .requests {
   @extend %column;
@@ -405,4 +648,7 @@ main {
   @extend %column;
   grid-area: responses;
 }
+.active {
+  border-top: solid 15px var(--column-active-indicator-color);
+} */
 </style>

@@ -7,8 +7,8 @@ export default Vue.extend({
     res: Object,
   },
   computed: mapState([
-    'selectedTraceId',
     'markers',
+    'selectedTraceId',
   ]),
   methods: mapMutations([
     'selectTraceId',
@@ -26,9 +26,10 @@ export default Vue.extend({
         <div
           class={s.header}
           vOn:click={() => this.selectTraceId(res.traceId)}
-        >{
-          res.status
-        }</div>
+        >
+          {res.status}
+        </div>
+
         {this.selectedTraceId === res.traceId ? JSON.stringify(res, null, 2) : ''}
       </pre>
     );
@@ -45,13 +46,13 @@ export default Vue.extend({
     padding: 5px;
   }
   .header:hover {
-    background: lightsteelblue;
+    background: var(--response-background);
   }
 }
 .markered {
   border-top: solid 3px red;
 }
 .active {
-  background: lightblue !important;
+  background: var(--response-active-background) !important;
 }
 </style>
