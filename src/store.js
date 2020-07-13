@@ -13,6 +13,7 @@ const getInitialState = () => ({
   // responsesBuffer: [], // from old to new
 
   selectedTraceId: null,
+  highlightedTraceId: null,
   markers: [],
 });
 
@@ -112,7 +113,6 @@ const store = new vuex.Store({
     //   ];
     // },
 
-
     selectTraceId: (state, traceId) => {
       if (state.selectedTraceId === traceId) {
         state.selectedTraceId = null;
@@ -120,10 +120,19 @@ const store = new vuex.Store({
         state.selectedTraceId = traceId;
       }
     },
+    highlightTraceId: (state, traceId) => {
+      state.highlightedTraceId = traceId;
+    },
 
     putMarker: (state) => {
       if (!state.markers.includes(state.requests[0].traceId)) {
         state.markers.push(state.requests[0].traceId);
+      }
+    },
+    putMarkerAboveSelected: (state) => {
+      const request = state.requests.find((r) => r.traceId === state.selectedTraceId);
+      if (!state.markers.includes(request.traceId)) {
+        state.markers.push(request.traceId);
       }
     },
     clearMarkers: (state) => {

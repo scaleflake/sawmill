@@ -11,9 +11,11 @@ export default Vue.extend({
   computed: mapState([
     'markers',
     'selectedTraceId',
+    'highlightedTraceId',
   ]),
   methods: mapMutations([
     'selectTraceId',
+    'highlightTraceId',
   ]),
 
   render() {
@@ -24,13 +26,19 @@ export default Vue.extend({
       <pre
         class={{
           [s.request]: 1,
-          [s.active]: this.selectedTraceId === req.traceId,
+
           [s.markered]: this.markers.includes(req.traceId),
         }}
       >
         <div
-          class={s.header}
+          class={{
+            [s.header]: true,
+            [s.selected]: this.selectedTraceId === req.traceId,
+            [s.highlighted]: this.highlightedTraceId === req.traceId,
+          }}
           vOn:click={() => this.selectTraceId(req.traceId)}
+          vOn:mouseover={() => this.highlightTraceId(req.traceId)}
+          vOn:mouseout={() => this.highlightTraceId(null)}
         >
           <div class={s.req}>
             {`${formatDateTime(req.timestamp)} ${req.method} ${req.url} ${
@@ -51,9 +59,9 @@ export default Vue.extend({
 
         {this.selectedTraceId === req.traceId ? (
           <div class={s.body}>
-            {`${JSON.stringify(lo.omit(req, 'response'), null, 2)}\n`}
+            {`REQUEST: ${JSON.stringify(lo.omit(req, 'response'), null, 2)}\n`}
             <div style={{ background: '#e1dffa' }}>
-              {JSON.stringify(req.response, null, 2)}
+              {`RESPONSE: ${JSON.stringify(req.response, null, 2)}`}
             </div>
           </div>
         ) : null}
@@ -69,10 +77,12 @@ export default Vue.extend({
   margin: 0;
   width: 100%;
   overflow: hidden;
+  background: var(--request-background);
 
   .header {
     /* padding: 5px; */
     display: flex;
+    background: white;
 
     .req {
       padding: 5px;
@@ -99,15 +109,16 @@ export default Vue.extend({
       background-color: orange;
     }
   }
-  .header:hover {
-    background: var(--request-background);
+  .selected {
+    background: var(--request-selected-background) !important;
+  }
+  .header:hover,
+  .header.highlighted {
+    background: var(--request-highlighted-background) !important;
   }
 }
 .markered {
   border-top: solid 3px red;
-}
-.active {
-  background: var(--request-active-background) !important;
 }
 
 .body {

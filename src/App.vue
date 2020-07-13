@@ -51,7 +51,13 @@
         style="margin-right: 5px"
         @click="putMarker"
       >
-        Put marker (ALT + M)
+        Put marker to top (ALT + M)
+      </button>
+      <button
+        style="margin-right: 5px"
+        @click="putMarkerAboveSelected"
+      >
+        Put marker above selected request
       </button>
       <button
         style="margin-right: 5px"
@@ -74,6 +80,13 @@
       >
         {{ timelineIsVisible ? 'Hide timeline' : 'Show timeline' }}
       </button>
+      <button
+        style="margin-right: 5px"
+        @click="fitTimeline"
+      >
+        Fit timeline
+      </button>
+      <span style="margin-right: 5px">Timeline info: {{ timelineInfoText }}</span>
     </div>
   </div>
 
@@ -231,23 +244,49 @@ export default {
         }
       };
 
+      // for (const { event, data } of JSON.parse(message.data)) {
+      //   switch (event) {
+      //     case 'request':
+      //       if (this.filterFunction) {
+      //         if (this.filterFunction(data)) {
+      //           addRequest(data);
+      //         }
+      //       } else {
+      //         addRequest(data);
+      //       }
+      //       break;
+      //     case 'response':
+      //       this.applyResponse(data);
+      //       break;
+      //     default:
+      //       break;
+      //   }
+      // }
+
+      const requests = [];
+      const responses = [];
+
       for (const { event, data } of JSON.parse(message.data)) {
-        switch (event) {
-          case 'request':
-            if (this.filterFunction) {
-              if (this.filterFunction(data)) {
-                addRequest(data);
-              }
-            } else {
-              addRequest(data);
-            }
-            break;
-          case 'response':
-            this.applyResponse(data);
-            break;
-          default:
-            break;
+        if (event === 'request') {
+          requests.push(data);
+        } else
+        if (event === 'response') {
+          responses.push(data);
         }
+      }
+
+      for (const request of requests.sort((a, b) => b - a)) {
+        if (this.filterFunction) {
+          if (this.filterFunction(request)) {
+            addRequest(request);
+          }
+        } else {
+          addRequest(request);
+        }
+      }
+
+      for (const response of responses) {
+        this.applyResponse(response);
       }
     };
     ws.onopen = () => {
@@ -293,11 +332,31 @@ export default {
     // },
 
     selectedTraceId(newV) {
-      if (
-        this.timeline !== null &&
-        typeof newV === 'string'
-      ) {
-        this.timeline.setSelection([newV]);
+      if (this.timeline !== null) {
+        if (typeof newV === 'string') {
+          this.timeline.setSelection([newV]);
+        } else {
+          this.timeline.setSelection([]);
+        }
+      }
+    },
+    highlightedTraceId(newV, oldV) {
+      if (this.timeline !== null) {
+        if (typeof newV === 'string') {
+          const origItem = this.timeline.itemsData.get(newV);
+          if (origItem) {
+            const newItem = { ...origItem, className: 'highlighted' };
+            this.timeline.itemsData.update(newItem);
+          }
+        } else {
+          if (typeof oldV === 'string') {
+            const origItem = this.timeline.itemsData.get(oldV);
+            if (origItem) {
+              const newItem = { ...origItem, className: undefined };
+              this.timeline.itemsData.update(newItem);
+            }
+          }
+        }
       }
     },
 
@@ -323,6 +382,7 @@ export default {
       // 'responses',
       // 'responsesBuffer',
       'selectedTraceId',
+      'highlightedTraceId',
       'markers',
     ]),
 
@@ -334,21 +394,31 @@ export default {
       + `{ fromIp: '${this.ip}', method: 'POST', url: { $nin: ['/rpc', '/rpc/'] } }\n\n`
       + '{ url: { $regex: \'^/asMaster\' } }';
     },
+
+    timelineInfoText() {
+      if (this.timeline) {
+        const { min, max } = this.timeline.getItemRange();
+        return `duration = ${max - min}ms`;
+      }
+      return '-';
+    },
   },
   methods: {
     ...mapMutations([
       'applyResponse',
       'selectTraceId',
+      'highlightTraceId',
       'pushRequests',
-      'pushRequestsToBuffer',
-      'extractRequestsFromBuffer',
-      'pushResponses',
-      'pushResponsesToBuffer',
-      'extractResponsesFromBuffer',
+      // 'pushRequestsToBuffer',
+      // 'extractRequestsFromBuffer',
+      // 'pushResponses',
+      // 'pushResponsesToBuffer',
+      // 'extractResponsesFromBuffer',
       'unshiftRequests',
-      'unshiftResponses',
+      // 'unshiftResponses',
       'resetState',
       'putMarker',
+      'putMarkerAboveSelected',
       'clearMarkers',
     ]),
 
@@ -520,10 +590,21 @@ export default {
         timeline.on('select', (properties) => {
           this.selectTraceId(properties.items[0]);
         });
+        timeline.on('itemover', (properties) => {
+          this.highlightTraceId(properties.item);
+        });
+        timeline.on('itemout', () => {
+          this.highlightTraceId(null);
+        });
         if (typeof this.selectedTraceId === 'string') {
           timeline.setSelection([this.selectedTraceId]);
         }
         this.timeline = timeline;
+      }
+    },
+    fitTimeline() {
+      if (this.timeline) {
+        this.timeline.fit();
       }
     },
 
@@ -576,8 +657,9 @@ body {
   --controls-background: #dff2ff;
   --column-active-indicator-color: #89ff9a;
 
-  --request-background: lightsteelblue;
-  --request-active-background: lightblue;
+  --request-background: lightblue;
+  --request-selected-background: #f7f799;
+  --request-highlighted-background: #ecc8e6;
 
   --response-background: lightsteelblue;
   --response-active-background: lightblue;
@@ -623,6 +705,17 @@ main {
     background: var(--input-background);
     color: var(--font-color);
   }
+}
+
+
+/* VIS-TIMELINE */
+.vis-item {
+  cursor: pointer;
+}
+.vis-item:hover,
+.vis-item.highlighted {
+  background: #f9ddf6;
+  border-color: #deb0f8;
 }
 
 /* .wrapper {
