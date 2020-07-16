@@ -235,7 +235,7 @@ export default {
 
     let i = 0;
     const ws = new ReconnectingWebSocket(`${baseUrl}/ws`);
-    ws.onmessage = (message) => {
+    ws.onmessage = (event) => {
       const addRequest = (data) => {
         if (this.requestsScrolledToTop) {
           this.unshiftRequests([data]);
@@ -244,7 +244,7 @@ export default {
         }
       };
 
-      // for (const { event, data } of JSON.parse(message.data)) {
+      // for (const { event, data } of JSON.parse(event.data)) {
       //   switch (event) {
       //     case 'request':
       //       if (this.filterFunction) {
@@ -266,16 +266,16 @@ export default {
       const requests = [];
       const responses = [];
 
-      for (const { event, data } of JSON.parse(message.data)) {
-        if (event === 'request') {
+      for (const { event: eventName, data } of JSON.parse(event.data)) {
+        if (eventName === 'request') {
           requests.push(data);
         } else
-        if (event === 'response') {
+        if (eventName === 'response') {
           responses.push(data);
         }
       }
 
-      for (const request of requests.sort((a, b) => b - a)) {
+      for (const request of requests) {
         if (this.filterFunction) {
           if (this.filterFunction(request)) {
             addRequest(request);
@@ -299,6 +299,7 @@ export default {
     };
 
     window.trySendRequestsInParallel = this.trySendRequestsInParallel;
+    window.check = this.check;
   },
   async mounted() {
     this.requestsScrolledToTop = this.$refs.requests.scrollTop === 0;
@@ -639,6 +640,13 @@ export default {
           })
         )));
       }
+    },
+
+    check() {
+      console.log(this.requests.every((r, i, rs) => (
+        i === 0 ||
+        (rs[i - 1].timestamp >= r.timestamp ?? rs[i - 1].traceId <= r.traceId)
+      )));
     },
   },
 };

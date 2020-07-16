@@ -1,12 +1,14 @@
 import Vue from 'vue';
 import vuex from 'vuex';
 import createPersistedState from 'vuex-persistedstate';
-import { restoreDollarSignsAndDots } from './utility';
+import { restoreDollarSignsAndDots, binarySearch } from './utility';
 
 Vue.use(vuex);
 
 const getInitialState = () => ({
-  requests: [], // from new to old
+  requestsMap: new Map(),
+  requests: [], // from new to old (timestamp 3 2 1)
+
   // requestsBuffer: [], // from old to new
 
   // responses: [], // from new to old
@@ -28,7 +30,8 @@ const store = new vuex.Store({
     },
 
     applyResponse: (state, response) => {
-      const request = state.requests.find((r) => r.traceId === response.traceId);
+      const request = state.requestsMap.get(response.traceId);
+      // const request = state.requests.find((r) => r.traceId === response.traceId);
       if (request) {
         request.response = response;
       }
@@ -42,26 +45,49 @@ const store = new vuex.Store({
     // },
 
     pushRequests: (state, requests) => {
-      state.requests.push(...requests.map((r) => {
-        restoreDollarSignsAndDots(r);
-        if (!r.response) {
-          r.response = null;
+      for (const r of requests) {
+        if (!state.requestsMap.has(r.traceId)) {
+          restoreDollarSignsAndDots(r);
+          if (!r.response) {
+            r.response = null;
+          }
+          state.requests.push(r);
+          state.requestsMap.set(r.traceId, r);
         }
-        return r;
-      }));
+      }
     },
     // pushResponses: (state, responses) => {
     //   state.responses.push(...responses);
     // },
 
     unshiftRequests: (state, requests) => {
-      state.requests.unshift(...requests.map((r) => {
-        restoreDollarSignsAndDots(r);
-        if (!r.response) {
-          r.response = null;
+      const compareRequests = (a, b) => {
+        const d = b.timestamp - a.timestamp;
+        if (d !== 0) {
+          return d;
         }
-        return r;
-      }));
+
+        if (a.traceId < b.traceId) {
+          return -1;
+        }
+        if (a.traceId > b.traceId) {
+          return 1;
+        }
+        return 0;
+      };
+
+      for (const r of requests) {
+        if (!state.requestsMap.has(r.traceId)) {
+          restoreDollarSignsAndDots(r);
+          if (!r.response) {
+            r.response = null;
+          }
+          state.requestsMap.set(r.traceId, r);
+
+          const i = binarySearch(state.requests, r, compareRequests);
+          state.requests.splice(i, 0, r);
+        }
+      }
     },
     // unshiftResponses: (state, responses) => {
     //   state.responses.unshift(...responses);
@@ -130,18 +156,14 @@ const store = new vuex.Store({
       }
     },
     putMarkerAboveSelected: (state) => {
-      const request = state.requests.find((r) => r.traceId === state.selectedTraceId);
+      const request = state.requestsMap.get(state.selectedTraceId);
+      // const request = state.requests.find((r) => r.traceId === state.selectedTraceId);
       if (!state.markers.includes(request.traceId)) {
         state.markers.push(request.traceId);
       }
     },
     clearMarkers: (state) => {
       state.markers = [];
-    },
-  },
-  getters: {
-    traceIdToRequest: (state) => {
-      state.reduce();
     },
   },
 });
