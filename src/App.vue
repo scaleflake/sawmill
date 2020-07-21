@@ -90,45 +90,6 @@
     </div>
   </div>
 
-  <!-- <div class="wrapper">
-    <div
-      class="requests"
-      ref="requests"
-      :class="{ 'active': requestsScrolledToTop }"
-    >
-      <InfiniteLoading
-        direction="top"
-        @infinite="fetchNewRequestsPage"
-        :identifier="newerRequestsInfiniteLoaderId"
-      />
-      <Request
-        v-for='req in requests'
-        :key='req.traceId'
-        :req='req'
-      />
-      <InfiniteLoading
-        @infinite="fetchNextRequestsPage"
-        :identifier="olderRequestsInfiniteLoaderId"
-      />
-    </div>
-
-    <div
-      class="responses"
-      ref="responses"
-      :class="{ 'active': responsesScrolledToTop }"
-    >
-      <Response
-        v-for='res in responses'
-        :key='res.traceId'
-        :res='res'
-      />
-      <InfiniteLoading
-        v-if="shouldRenderResponsesInfinite"
-        @infinite="fetchNextResponsesPage"
-      />
-    </div>
-  </div> -->
-
   <div
     ref='timeline'
     :style="{ display: timelineIsVisible ? 'block' : 'none' }"
@@ -168,8 +129,7 @@ import sift from 'sift';
 import axios from 'axios';
 import JSON5 from 'json5';
 import Prism from 'prismjs';
-// import 'prismjs/themes/prism-okaidia.css';
-import 'prismjs/themes/prism-coy.css';
+import 'prismjs/themes/prism-coy.css'; // TODO: use prismjs/themes/prism-okaidia.css for dark theme
 import 'prismjs/components/prism-yaml.min';
 import { CodeJar } from 'codejar';
 import { Timeline } from 'vis-timeline';
@@ -177,17 +137,13 @@ import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import InfiniteLoading from 'vue-infinite-loading';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 import { mapMutations, mapState } from 'vuex';
-// import Request from './Request.vue';
-// import Response from './Response.vue';
 import RequestAndResponse from './RequestAndResponse.vue';
-import { /* scrollBarStorage, */ queue } from './utility';
+import { queue } from './utility';
 
-axios.defaults.baseURL = process.env.VUE_APP_REST_API_BASE_URL || 'http://localhost:14080/logger';
+axios.defaults.baseURL = process.env.VUE_APP_REST_API_BASE_URL;
 
 export default {
   components: {
-    // Request,
-    // Response,
     InfiniteLoading,
     RequestAndResponse,
   },
@@ -203,11 +159,6 @@ export default {
       filterFunction: null,
 
       requestsScrolledToTop: false,
-      // responsesScrolledToTop: false,
-
-      // shouldRenderRequestsInfinite: true,
-      // shouldRenderResponsesInfinite: true,
-
       requestsLoadingQueue: queue(),
 
       newerRequestsInfiniteLoaderId: Date.now(),
@@ -245,25 +196,6 @@ export default {
           this.newerRequestsInfiniteLoaderId += 1;
         }
       };
-
-      // for (const { event, data } of JSON.parse(event.data)) {
-      //   switch (event) {
-      //     case 'request':
-      //       if (this.filterFunction) {
-      //         if (this.filterFunction(data)) {
-      //           addRequest(data);
-      //         }
-      //       } else {
-      //         addRequest(data);
-      //       }
-      //       break;
-      //     case 'response':
-      //       this.applyResponse(data);
-      //       break;
-      //     default:
-      //       break;
-      //   }
-      // }
 
       const requests = [];
       const responses = [];
@@ -309,11 +241,6 @@ export default {
       this.requestsScrolledToTop = event.target.scrollTop < 35;
     });
 
-    // this.responsesScrolledToTop = this.$refs.responses.scrollTop === 0;
-    // this.$refs.responses.addEventListener('scroll', (event) => {
-    //   this.responsesScrolledToTop = event.target.scrollTop < 35;
-    // });
-
     const jar = new CodeJar(this.$refs.filterQueryInput, (e) => {
       Prism.highlightElement(e);
     });
@@ -324,16 +251,6 @@ export default {
     this.codeJar = jar;
   },
   watch: {
-    // responsesScrolledToTop(newV) {
-    //   if (newV) {
-    //     scrollBarStorage.save(this.$refs.responses);
-    //     this.extractResponsesFromBuffer();
-    //     requestAnimationFrame(() => {
-    //       scrollBarStorage.restore(this.$refs.responses);
-    //     });
-    //   }
-    // },
-
     selectedTraceId(newV) {
       if (this.timeline !== null) {
         if (typeof newV === 'string') {
@@ -381,9 +298,6 @@ export default {
   computed: {
     ...mapState([
       'requests',
-      // 'requestsBuffer',
-      // 'responses',
-      // 'responsesBuffer',
       'selectedTraceId',
       'highlightedTraceId',
       'markers',
@@ -412,13 +326,7 @@ export default {
       'selectTraceId',
       'highlightTraceId',
       'pushRequests',
-      // 'pushRequestsToBuffer',
-      // 'extractRequestsFromBuffer',
-      // 'pushResponses',
-      // 'pushResponsesToBuffer',
-      // 'extractResponsesFromBuffer',
       'unshiftRequests',
-      // 'unshiftResponses',
       'resetState',
       'putMarker',
       'putMarkerAboveSelected',
@@ -496,23 +404,6 @@ export default {
       });
     },
 
-    // async fetchNextResponsesPage(state) {
-    //   const lastTimestamp = this.responses[this.responses.length - 1]?.timestamp;
-    //   const { data } = await axios.get('/responses', {
-    //     params: {
-    //       $sort: '-timestamp',
-    //       $limit: '10',
-    //       ...(lastTimestamp && { timestamp: `<${lastTimestamp}` }),
-    //     },
-    //   });
-    //   if (data.length) {
-    //     this.pushResponses(data);
-    //     state.loaded();
-    //   } else {
-    //     state.complete();
-    //   }
-    // },
-
     checkAndCompileFilterQueryString(filterQueryString) {
       if (filterQueryString === '') {
         this.filterQueryIsValid = true;
@@ -547,15 +438,7 @@ export default {
       await this.fetchNextRequestsPage();
       this.newerRequestsInfiniteLoaderId += 1;
       this.olderRequestsInfiniteLoaderId += 1;
-      // this.rerenderResponsesInfinite();
     },
-
-    // rerenderResponsesInfinite() {
-    //   this.shouldRenderResponsesInfinite = false;
-    //   this.$nextTick(() => {
-    //     this.shouldRenderResponsesInfinite = true;
-    //   });
-    // },
 
     buildTimeline() {
       if (this.markers.length > 1) {
@@ -701,13 +584,15 @@ main {
   padding: 10px 5px;
   background: var(--controls-background);
 
-  /* .panel + .panel {
+  /*
+  .panel + .panel {
     margin-top: 0;
   }
 
   .row + .row {
     margin-top: 0;
-  } */
+  }
+  */
 
   input[type="text"] {
     font-family: monospace;
@@ -727,31 +612,4 @@ main {
   background: #f9ddf6;
   border-color: #deb0f8;
 }
-
-/* .wrapper {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
-  grid-template-areas: 'requests responses';
-  flex: 1;
-  overflow: auto;
-}
-
-%column {
-  padding: 15px;
-  display: inline-block;
-  overflow-y: scroll;
-  border-top: solid 15px transparent;
-}
-.requests {
-  @extend %column;
-  grid-area: requests;
-}
-.responses {
-  @extend %column;
-  grid-area: responses;
-}
-.active {
-  border-top: solid 15px var(--column-active-indicator-color);
-} */
 </style>

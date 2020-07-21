@@ -50,37 +50,6 @@ export function formatDateTime(timestamp) {
 }
 
 
-// NOTE: taken from vue-infinite-loading
-export const scrollBarStorage = {
-  key: '_infiniteScrollHeight',
-  getScrollElm(elm) {
-    return elm === window ? document.documentElement : elm;
-  },
-  save(elm) {
-    const target = this.getScrollElm(elm);
-
-    // save scroll height on the scroll parent
-    target[this.key] = target.scrollHeight;
-  },
-  restore(elm) {
-    const target = this.getScrollElm(elm);
-
-    /* istanbul ignore else */
-    if (typeof target[this.key] === 'number') {
-      target.scrollTop = target.scrollHeight - target[this.key] + target.scrollTop;
-    }
-
-    this.remove(target);
-  },
-  remove(elm) {
-    if (elm[this.key] !== undefined) {
-      // remove scroll height
-      delete elm[this.key];
-    }
-  },
-};
-
-
 export function queue() {
   let isBusy = false;
 
