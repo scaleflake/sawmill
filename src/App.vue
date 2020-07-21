@@ -220,7 +220,9 @@ export default {
     };
   },
   async created() {
-    const savedFilterQueryString = localStorage.getItem('logs-wizard:filterQueryString');
+    const savedFilterQueryString =
+      localStorage.getItem('sawmill:filterQueryString') ||
+      localStorage.getItem('logs-wizard:filterQueryString');
     if (typeof savedFilterQueryString === 'string') {
       this.filterQueryString = savedFilterQueryString;
       this.checkAndCompileFilterQueryString(this.filterQueryString);
@@ -367,7 +369,7 @@ export default {
       }, 200);
 
       const saveFilterQueryString = lo.debounce((newV) => {
-        localStorage.setItem('logs-wizard:filterQueryString', newV);
+        localStorage.setItem('sawmill:filterQueryString', newV);
       }, 500);
 
       return function (newV) {

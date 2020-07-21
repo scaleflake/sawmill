@@ -1,4 +1,4 @@
-# logs-wizard
+# sawmill
 
 ## Project setup
 ```
